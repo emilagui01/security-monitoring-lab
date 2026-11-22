@@ -1,4 +1,9 @@
-# security-hunt.ps1 - pull lab alert events from the last 2 days into one CSV
+<#
+.SYNOPSIS
+  security-hunt.ps1 - pull lab alert events from the last 2 days into one CSV
+.NOTES
+  Code: Generated with AI. Run, tested, and documented by Emil Aguirre Herrera.
+#>
 $since = (Get-Date).AddDays(-2)
 $queries = @(
   @{LogName='Security'; Id=4625,4688,4698,4699,1102},

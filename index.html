@@ -529,6 +529,7 @@ iface vmbr1 inet static
         something you have), with single-use recovery keys stored in a password manager.</p>
       <div class="shots">
         <figure><button class="shot" type="button"><img src="b-vmbr1.jpg" alt="Proxmox shell showing vmbr1 at 10.10.10.1/24, ip_forward 1 and the MASQUERADE rule" loading="lazy"></button><figcaption>vmbr1, forwarding and NAT rule</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="b-mfa-setup.jpg" alt="Proxmox Add a TOTP login factor window for root@pam with the secret and QR code blurred" loading="lazy"></button><figcaption>TOTP setup (QR code and secret blurred)</figcaption></figure>
         <figure><button class="shot" type="button"><img src="b-mfa-prompt.jpg" alt="Proxmox login asking for a second login factor with TOTP App and Recovery Key options" loading="lazy"></button><figcaption>Second factor required at login</figcaption></figure>
         <figure><button class="shot" type="button"><img src="b-iso-upload.jpg" alt="Proxmox ISO Images list with the Windows 11 Enterprise and Server 2022 evaluation ISOs" loading="lazy"></button><figcaption>Windows ISOs uploaded</figcaption></figure>
         <figure><button class="shot" type="button"><img src="b-checkpoints.jpg" alt="Hyper-V Manager with CLIENT01, DC01 and HELPDESK1 off and PVE running, with Step 4 checkpoints" loading="lazy"></button><figcaption>Hyper-V checkpoints of PVE</figcaption></figure>
@@ -867,7 +868,13 @@ wevtutil cl Security                                             # clear the log
       <h3 class="sub" id="h-script">security-hunt.ps1</h3>
       <p><a href="security-hunt.ps1">security-hunt.ps1</a> asks Windows for only the matching events with
         <code>-FilterHashtable</code> (much faster than reading whole logs) and writes one sorted timeline.</p>
-<pre class="code ps1"># security-hunt.ps1 - pull lab alert events from the last 2 days into one CSV
+      <p>AI generated the code for this script and the two searches below. I ran it, tested it, and documented the results here.</p>
+<pre class="code ps1">&lt;#
+.SYNOPSIS
+  security-hunt.ps1 - pull lab alert events from the last 2 days into one CSV
+.NOTES
+  Code: Generated with AI. Run, tested, and documented by Emil Aguirre Herrera.
+#>
 $since = (Get-Date).AddDays(-2)
 $queries = @(
   @{LogName='Security'; Id=4625,4688,4698,4699,1102},

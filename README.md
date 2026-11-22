@@ -23,7 +23,7 @@ and found each one in the logs.
 ## Files
 
 - `index.html` - the full write-up (Proxmox-style view with an easy-read option)
-- `security-hunt.ps1` - pulls the lab's alert events from the Security, Defender and PowerShell logs into one sorted CSV timeline
+- `security-hunt.ps1` - pulls the lab's alert events from the Security, Defender and PowerShell logs into one sorted CSV timeline (code generated with AI; run, tested, and documented by me)
 - `*.jpg` - screenshots used in the write-up
 
 ## Tools
