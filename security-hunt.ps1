@@ -10,6 +10,6 @@ $events = foreach ($q in $queries) {
   Get-WinEvent -FilterHashtable $q -ErrorAction SilentlyContinue
 }
 $events | Sort-Object TimeCreated |
-  Select-Object TimeCreated, LogName, Id, @{n='Summary';e={($_.Message -split "`n")[0]}} |
+  Select-Object TimeCreated, LogName, Id, @{n='Summary';e={($_.Message -split "`r?`n")[0].Trim()}} |
   Export-Csv C:\Users\Public\security-hunt.csv -NoTypeInformation
 "Exported $($events.Count) events to C:\Users\Public\security-hunt.csv"
