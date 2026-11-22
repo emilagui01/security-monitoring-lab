@@ -349,7 +349,7 @@
 </div>
 
 <div class="easy-view"><main class="ev-main">
-  <p class="ev-kicker">Home Lab 4 &middot; Completed</p>
+  <p class="ev-kicker">Security project &middot; Completed</p>
   <h1>Catching cyberattacks in a practice network</h1>
   <p class="ev-lede">I built a small company network on my laptop, turned on the security records that a security
     team relies on, then safely acted out seven things real attackers do. For each one I found the evidence in the
@@ -405,7 +405,7 @@
       <li><a href="#hunt"><span class="ico sec"></span>Hunting</a></li>
       <li><a href="#troubleshooting"><span class="ico sec"></span>Troubleshooting</a></li>
       <li><a href="#lessons"><span class="ico sec"></span>Lessons</a></li>
-      <li><a href="#labs"><span class="ico sec"></span>All labs</a></li>
+      <li><a href="#labs"><span class="ico sec"></span>Other projects</a></li>
     </ul>
   </nav>
 
@@ -413,7 +413,7 @@
 
   <!-- ===================== SUMMARY ===================== -->
   <section class="panel" id="summary" aria-labelledby="h-sum">
-    <div class="phead"><h2 id="h-sum">Datacenter &middot; Security Monitoring Lab</h2><span class="tags">lab4 &middot; security</span>
+    <div class="phead"><h2 id="h-sum">Datacenter &middot; Security Monitoring Lab</h2><span class="tags">standalone &middot; security</span>
       <div class="acts"><span class="st">Running</span><span>Snapshots: 4</span></div></div>
     <div class="tabs"><a href="#summary">Summary</a><a href="#network">Network</a><a href="#build">Hardware</a><a href="#incidents">Firewall</a><a href="#tasks">Task History</a></div>
     <div class="pbody">
@@ -425,7 +425,7 @@
             Microsoft Defender, then attacked seven times. Every attack was caught in Event Viewer or Defender,
             written up as an incident, and cleaned up.</p>
           <dl class="kv">
-            <dt>Series</dt><dd>Home Lab 4 &middot; <span class="status-ok">Complete</span></dd>
+            <dt>Project</dt><dd>Standalone security project &middot; <span class="status-ok">Complete</span></dd>
             <dt>Hypervisor</dt><dd>Proxmox VE 9.2, nested inside Hyper-V on my ThinkPad (JARVIS)</dd>
             <dt>Domain</dt><dd><code>seclab.local</code> on Windows Server 2022</dd>
             <dt>Client</dt><dd>Windows 11 Enterprise, domain joined</dd>
@@ -1008,17 +1008,17 @@ Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4698} | ForEach-Object {
 
   <!-- ===================== LABS ===================== -->
   <section class="panel" id="labs" aria-labelledby="h-labs">
-    <div class="phead"><h2 id="h-labs">Home lab series</h2></div>
+    <div class="phead"><h2 id="h-labs">My other projects</h2></div>
     <div class="tabs"><a href="#labs">Pools</a></div>
     <div class="pbody">
-<div class="ev-explain"><b>In plain English:</b> How this project connects to my other projects.</div>
+<div class="ev-explain"><b>In plain English:</b> This is a separate project from my three-part IT support lab series. Those three labs share one practice network; this one was built from scratch with its own.</div>
       <div class="tbl"><table>
-        <thead><tr><th>#</th><th>Lab</th><th>Status</th><th>Notes</th></tr></thead>
+        <thead><tr><th>Project</th><th>Part</th><th>Status</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td>1</td><td><a href="https://emilagui01.github.io/ad-homelab/">Windows Server 2022 Active Directory</a></td><td class="ok">Complete</td><td>Domain, DNS, DHCP, Group Policy, account tickets</td></tr>
-          <tr><td>2</td><td><a href="https://emilagui01.github.io/helpdesk-lab/">Help Desk Ticketing System</a></td><td class="ok">Complete</td><td>osTicket on Ubuntu, connected to AD</td></tr>
-          <tr><td>3</td><td><a href="https://emilagui01.github.io/powershell-automation-lab/">PowerShell Automation</a></td><td class="ok">Complete</td><td>Account lifecycle scripts run from tickets</td></tr>
-          <tr><td>4</td><td>Security Monitoring</td><td class="ok">Complete</td><td>This page</td></tr>
+          <tr><td>IT support lab series</td><td><a href="https://emilagui01.github.io/ad-homelab/">1. Windows Server 2022 Active Directory</a></td><td class="ok">Complete</td><td>Domain, DNS, DHCP, Group Policy, account tickets</td></tr>
+          <tr><td>IT support lab series</td><td><a href="https://emilagui01.github.io/helpdesk-lab/">2. Help Desk Ticketing System</a></td><td class="ok">Complete</td><td>osTicket on Ubuntu, connected to AD</td></tr>
+          <tr><td>IT support lab series</td><td><a href="https://emilagui01.github.io/powershell-automation-lab/">3. PowerShell Automation</a></td><td class="ok">Complete</td><td>Account lifecycle scripts run from tickets</td></tr>
+          <tr><td>Security project</td><td>Security Monitoring Lab</td><td class="ok">Complete</td><td>This page</td></tr>
         </tbody>
       </table></div>
     </div>
@@ -1026,7 +1026,7 @@ Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4698} | ForEach-Object {
 
   <footer>
     Emil Aguirre Herrera &middot;
-    <a href="https://emilagui01.github.io/#labs">All labs</a>
+    <a href="https://emilagui01.github.io/#labs">All projects</a>
     <a href="https://github.com/emilagui01/security-monitoring-lab">Repository</a>
     <a href="https://www.linkedin.com/in/emilagui01">LinkedIn</a>
   </footer>

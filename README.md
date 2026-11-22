@@ -2,7 +2,7 @@
 
 **Live write-up:** https://emilagui01.github.io/security-monitoring-lab/
 
-Home Lab 4 of my IT portfolio. Proxmox VE 9.2 runs nested inside Hyper-V and hosts a small Windows domain
+A standalone security project in my IT portfolio, separate from my three-part IT support lab series. Proxmox VE 9.2 runs nested inside Hyper-V and hosts a small Windows domain
 (`seclab.local`): a Windows Server 2022 domain controller and a domain-joined Windows 11 client on a private
 NAT bridge. I turned on Advanced Audit Policy, command-line process auditing and PowerShell script block
 logging through one GPO, kept Microsoft Defender with Tamper Protection on, then simulated seven attacks
@@ -30,7 +30,7 @@ and found each one in the logs.
 
 Proxmox VE, Hyper-V, Active Directory, Group Policy, Event Viewer, Microsoft Defender, PowerShell
 
-## Other labs
+## My IT support lab series
 
 1. [Windows Server 2022 Active Directory](https://emilagui01.github.io/ad-homelab/)
 2. [Help Desk Ticketing System](https://emilagui01.github.io/helpdesk-lab/)
