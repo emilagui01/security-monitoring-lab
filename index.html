@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Security Monitoring Lab | Emil Aguirre Herrera</title>
+<meta name="description" content="Proxmox VE nested in Hyper-V running a Windows Server 2022 domain and Windows 11 client. Advanced audit policy, PowerShell logging and Microsoft Defender used to detect seven simulated attacks, then hunted with Event Viewer and PowerShell.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Open+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #1b1b1b;
+    --panel: #252525;
+    --panel-2: #2d2d2d;
+    --head: #323232;
+    --head-hi: #3c3c3c;
+    --line: #3f3f3f;
+    --line-soft: #333;
+    --text: #e8e8e8;
+    --dim: #a8a8a8;
+    --orange: #e57000;
+    --orange-soft: #ff9c3d;
+    --blue: #3892d4;
+    --blue-dark: #1f6fb0;
+    --sel: #2f5c8a;
+    --green: #21bf4b;
+    --red: #ff4d4d;
+    --red-bg: #3a1a1a;
+    --yellow: #f2c037;
+    --mono: "JetBrains Mono", "DejaVu Sans Mono", Consolas, monospace;
+    --sans: "Open Sans", "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 112px; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15.5px; line-height: 1.6; }
+  a { color: var(--blue); }
+  a:hover { color: #6db6ec; }
+  code { font-family: var(--mono); font-size: 0.92em; background: #111; border: 1px solid var(--line-soft); padding: 0 5px; border-radius: 3px; color: #ffcf9e; }
+  b, strong { color: #fff; }
+
+  /* ---------- Proxmox top bar ---------- */
+  .pve-top {
+    position: sticky; top: 46px; z-index: 900;
+    display: flex; align-items: center; gap: 16px; padding: 8px 18px;
+    background: #121212; border-bottom: 1px solid #000;
+  }
+  .logo { display: flex; align-items: baseline; gap: 10px; white-space: nowrap; }
+  .logo .px { font-family: "Arial Black", Arial, sans-serif; font-weight: 900; font-size: 22px; letter-spacing: 1px; color: #fff; }
+  .logo .px i { font-style: normal; color: var(--orange); }
+  .logo .ve { color: #ddd; font-size: 15px; }
+  .pve-search { flex: 1; max-width: 300px; background: #2a2a2a; border: 1px solid #3a3a3a; border-radius: 3px; color: #777; font-size: 13px; padding: 5px 10px; }
+  .pve-btns { margin-left: auto; display: flex; gap: 6px; }
+  .pve-btn { font-size: 13px; padding: 5px 11px; border-radius: 3px; background: #3a3a3a; color: #eee; border: 1px solid #4a4a4a; white-space: nowrap; text-decoration: none; }
+  .pve-btn.blue { background: var(--blue-dark); border-color: #2a7fc6; color: #fff; }
+  .pve-btn:hover { color: #fff; filter: brightness(1.15); }
+
+  /* ---------- layout: resource tree + content ---------- */
+  .layout { display: grid; grid-template-columns: 250px 1fr; min-height: 100vh; }
+  .tree {
+    position: sticky; top: 98px; align-self: start; height: calc(100vh - 98px); overflow-y: auto;
+    background: var(--panel); border-right: 1px solid #111; padding: 0 0 20px; font-size: 14px;
+  }
+  .tree .view { display: flex; justify-content: space-between; padding: 8px 12px; background: var(--head); border-bottom: 1px solid #111; color: #ddd; }
+  .tree ul { list-style: none; margin: 0; padding: 0; }
+  .tree li a { display: flex; align-items: center; gap: 8px; padding: 4px 12px; color: var(--text); text-decoration: none; white-space: nowrap; }
+  .tree li a:hover { background: #343434; }
+  .tree li a.on { background: var(--sel); color: #fff; }
+  .tree .l1 a { padding-left: 26px; } .tree .l2 a { padding-left: 42px; } .tree .l3 a { padding-left: 58px; }
+  .ico { width: 16px; height: 14px; flex: none; display: inline-block; border-radius: 2px; position: relative; }
+  .ico.dc { background: linear-gradient(#bbb 0 3px, transparent 3px 5px, #bbb 5px 8px, transparent 8px 10px, #bbb 10px); }
+  .ico.node { background: #cfcfcf; border-radius: 2px; }
+  .ico.node::after { content: ""; position: absolute; right: -4px; bottom: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--green); border: 1px solid #111; }
+  .ico.vm { border: 2px solid #d6d6d6; height: 12px; }
+  .ico.vm.run::after { content: ""; position: absolute; right: -5px; bottom: -5px; border-left: 7px solid var(--green); border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
+  .ico.sec { background: none; border: 2px solid var(--orange); border-radius: 50%; width: 12px; height: 12px; margin: 0 2px; }
+  .tree .grp { padding: 12px 12px 4px; color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: .6px; }
+
+  main.content { min-width: 0; padding: 18px 22px 40px; }
+
+  /* ---------- Proxmox panels ---------- */
+  .panel { background: var(--panel); border: 1px solid #111; border-radius: 3px; margin: 0 0 22px; overflow: hidden; }
+  .phead { display: flex; align-items: center; gap: 12px; padding: 9px 14px; background: var(--head); border-bottom: 1px solid #111; }
+  .phead h2 { margin: 0; font-size: 16px; font-weight: 600; color: #fff; }
+  .phead .tags { color: var(--dim); font-size: 13px; }
+  .phead .acts { margin-left: auto; display: flex; gap: 6px; }
+  .phead .acts span { font-size: 12.5px; padding: 3px 10px; border: 1px solid #4a4a4a; border-radius: 3px; background: #3a3a3a; color: #ddd; white-space: nowrap; }
+  .phead .acts span.st::before { content: "\25B6"; color: var(--green); margin-right: 6px; font-size: 10px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 0; background: var(--panel-2); border-bottom: 1px solid #111; }
+  .tabs a { padding: 7px 14px; color: #ddd; text-decoration: none; font-size: 13.5px; border-right: 1px solid #1a1a1a; }
+  .tabs a:first-child { background: var(--sel); color: #fff; }
+  .tabs a:hover { background: #3a3a3a; }
+  .pbody { padding: 16px 20px 20px; }
+  .pbody > p:first-child { margin-top: 0; }
+  h3.sub { margin: 24px 0 8px; font-size: 16px; color: #fff; padding-left: 10px; border-left: 3px solid var(--orange); }
+  h3.sub:first-child { margin-top: 4px; }
+
+  /* summary (header) panel */
+  .summary { display: grid; grid-template-columns: 1.3fr 1fr; gap: 18px; }
+  .summary h1 { margin: 0 0 6px; font-size: clamp(25px, 4vw, 34px); line-height: 1.2; color: #fff; }
+  .summary .lede { color: #cfcfcf; margin: 0 0 12px; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; margin: 0; font-size: 14.5px; }
+  .kv dt { color: var(--dim); } .kv dd { margin: 0; }
+  .gauges { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; align-content: start; }
+  .gauge { background: var(--panel-2); border: 1px solid var(--line); border-radius: 3px; padding: 10px 12px; }
+  .gauge b { display: block; font-size: 26px; line-height: 1.1; color: var(--orange-soft); }
+  .gauge span { font-size: 13px; color: var(--dim); }
+  .gauge .bar { height: 5px; background: #111; border-radius: 3px; margin-top: 6px; overflow: hidden; }
+  .gauge .bar i { display: block; height: 100%; background: var(--green); }
+  .status-ok { color: var(--green); font-weight: 700; }
+
+  /* tables in Proxmox grid style */
+  .tbl { overflow-x: auto; margin: 10px 0 14px; border: 1px solid var(--line); border-radius: 3px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th { text-align: left; background: var(--head); color: #eee; font-weight: 600; padding: 6px 10px; border-bottom: 1px solid #111; border-right: 1px solid #2a2a2a; white-space: nowrap; }
+  td { padding: 5px 10px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  tbody tr:nth-child(even) td { background: #2a2a2a; }
+  tbody tr:hover td { background: #33404d; }
+  td.ok { color: var(--green); font-weight: 700; white-space: nowrap; }
+  td.err { color: var(--red); font-weight: 700; white-space: nowrap; }
+  td.warn { color: var(--yellow); font-weight: 700; white-space: nowrap; }
+  td.id { font-family: var(--mono); color: var(--orange-soft); white-space: nowrap; }
+  td.nw { white-space: nowrap; }
+
+  /* code */
+  pre.code, pre.out {
+    background: #0d0d0d; border: 1px solid var(--line); border-radius: 3px; padding: 11px 13px; margin: 8px 0 14px;
+    overflow-x: auto; font-family: var(--mono); font-size: 13.5px; line-height: 1.5; color: #e6e6e6; white-space: pre;
+  }
+  pre.out { color: #cfcfcf; white-space: pre-wrap; word-break: break-word; }
+  pre.code .c { color: #7f8c8d; font-style: italic; }
+  pre.code .k { color: #6db6ec; font-weight: 700; }
+  pre.code .s { color: #f2c037; }
+  pre.code .v { color: #ff9c3d; }
+  pre.code .p { color: #c792ea; }
+  pre.diagram { color: #9ad0f5; background: #111; border: 1px dashed var(--line); border-radius: 3px; padding: 14px; overflow-x: auto; font-family: var(--mono); font-size: 13px; line-height: 1.3; margin: 10px 0 14px; }
+  pre.diagram em { color: var(--orange-soft); font-style: normal; }
+  pre.diagram b { color: var(--green); }
+
+  /* ---------- incidents ---------- */
+  .incident { border: 1px solid var(--line); border-radius: 3px; margin: 18px 0; background: #212121; }
+  .incident .ihead { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 12px; background: var(--panel-2); border-bottom: 1px solid #111; }
+  .incident .ihead h3 { margin: 0; font-size: 15.5px; color: #fff; }
+  .incident .ihead .num { font-family: var(--mono); color: var(--orange); }
+  .incident .ihead .when { margin-left: auto; font-size: 13px; color: var(--dim); }
+  .incident .ibody { padding: 12px 14px 6px; }
+  .row { margin: 0 0 8px; }
+  .lbl { display: inline-block; min-width: 82px; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .5px; color: var(--orange-soft); }
+  .lbl.det { color: #6db6ec; } .lbl.res { color: var(--green); } .lbl.why { color: var(--yellow); }
+
+  /* troubleshooting */
+  .issue { border-left: 3px solid var(--red); background: var(--red-bg); border-radius: 0 3px 3px 0; padding: 10px 14px 4px; margin: 12px 0; }
+  .issue .head { color: #ff8a8a; font-family: var(--mono); font-weight: 700; margin: 0 0 2px; word-break: break-word; }
+  .issue .meta { color: #d7a0a0; margin: 0 0 8px; font-size: 13.5px; }
+  .issue .row .lbl { color: #ffb3b3; }
+  .issue .row.fix .lbl { color: var(--green); }
+
+  /* skill tags */
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; margin: 8px 0 0; list-style: none; }
+  .chips li { background: #2f3b47; color: #cfe6f8; border: 1px solid #3c5164; border-radius: 3px; padding: 1px 9px; font-size: 13.5px; }
+
+  /* ---------- screenshots + lightbox ---------- */
+  .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin: 12px 0 8px; }
+  figure { margin: 0; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; background: #111; }
+  .shot { display: block; width: 100%; padding: 0; border: 0; background: #0d0d0d; cursor: zoom-in; position: relative; }
+  .shot img { display: block; width: 100%; aspect-ratio: 16/10; object-fit: cover; object-position: center top; }
+  .shot::after { content: "\2922  View"; position: absolute; right: 8px; top: 8px; background: rgba(0,0,0,.7); color: #fff; font-size: 12px; padding: 2px 8px; border-radius: 3px; opacity: 0; transition: opacity .15s; }
+  .shot:hover::after, .shot:focus-visible::after { opacity: 1; }
+  .shot:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
+  .shot img.missing { object-fit: contain; }
+  figcaption { padding: 6px 10px 8px; font-size: 13.5px; color: #d8d8d8; background: var(--panel-2); border-top: 1px solid #111; }
+
+  .lb { position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,.92); display: none; flex-direction: column; }
+  .lb.open { display: flex; }
+  .lb-bar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: #121212; border-bottom: 1px solid #333; color: #ddd; font-size: 14px; }
+  .lb-bar .lb-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lb-bar .lb-count { color: var(--dim); font-family: var(--mono); font-size: 13px; }
+  .lb button { font: inherit; cursor: pointer; }
+  .lb-x { background: #3a3a3a; color: #fff; border: 1px solid #555; border-radius: 3px; padding: 3px 12px; }
+  .lb-x:hover { background: #c0392b; border-color: #c0392b; }
+  .lb-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 14px 60px; position: relative; }
+  .lb-stage img { max-width: 100%; max-height: 100%; object-fit: contain; border: 1px solid #333; background: #000; }
+  .lb-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 64px; border: 1px solid #444; border-radius: 3px; background: rgba(40,40,40,.85); color: #fff; font-size: 26px; }
+  .lb-nav:hover { background: var(--orange); border-color: var(--orange); }
+  .lb-prev { left: 8px; } .lb-next { right: 8px; }
+  .lb-cap { padding: 8px 16px 12px; text-align: center; color: #ddd; font-size: 14px; }
+  body.lb-lock { overflow: hidden; }
+
+  footer { text-align: center; color: var(--dim); font-size: 14px; margin: 8px 0 0; }
+  footer a { margin: 0 6px; }
+
+  /* screen-reader only headings (shown in easy view) */
+  h2.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .tree { position: static; height: auto; border-right: 0; border-bottom: 1px solid #111; padding-bottom: 6px; }
+    .tree .scroll { display: flex; flex-wrap: wrap; gap: 2px 0; }
+    .tree .grp, .tree .hide-m { display: none; }
+    .tree li a { padding: 4px 10px !important; }
+    .summary { grid-template-columns: 1fr; }
+    .pve-search, .pve-btns, .phead .acts, .phead .tags { display: none; }
+    html { scroll-padding-top: 100px; }
+  }
+  @media (max-width: 600px) {
+    main.content { padding: 12px 10px 30px; }
+    .pbody { padding: 12px 12px 16px; }
+    .lb-stage { padding: 10px 6px; }
+    .lb-nav { top: auto; bottom: 8px; transform: none; height: 44px; }
+    .incident .ihead .when { margin-left: 0; width: 100%; }
+  }
+
+  /* ================= View bar + easy-read view =================
+     Same pattern as my other lab pages: easy-read keeps ALL of the project
+     content, swaps the Proxmox theme for a light readable layout, and adds a
+     plain-English note at the start of each part. */
+  .view-bar {
+    position: sticky; top: 0; z-index: 1000; height: 46px;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 0 18px;
+    background: linear-gradient(#262c34, #1b2026); border-bottom: 2px solid #0c0e11;
+    font-family: "Atkinson Hyperlegible", "Segoe UI", Arial, sans-serif; font-size: 14px; line-height: 1.3;
+  }
+  .view-bar .vb-home { color: #c9d3de; text-decoration: none; font-weight: 700; }
+  .view-bar .vb-home:hover { color: #fff; }
+  .view-toggle {
+    display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+    font-family: inherit; font-size: 14px; font-weight: 700; line-height: 1.2;
+    padding: 7px 14px; border-radius: 6px; border: 2px solid #ffb547; background: #2a2218; color: #ffd48a;
+  }
+  .view-toggle:hover { background: #3a2e1e; }
+  .view-toggle:focus-visible { outline: 3px solid #ffb547; outline-offset: 2px; }
+  .view-toggle .aa { font-size: 15px; background: #1a1200; color: #ffb547; border-radius: 4px; padding: 1px 5px; }
+  .view-toggle .to-tech { display: none; }
+  body.easy .view-toggle .to-easy { display: none; }
+  body.easy .view-toggle .to-tech { display: inline; }
+  body.easy .view-bar { background: #fff; border-bottom: 1px solid #d9dee4; box-shadow: 0 2px 8px rgba(0,0,0,.05); }
+  body.easy .view-bar .vb-home { color: #1a5fb4; }
+  body.easy .view-toggle { background: #fff; color: #1a5fb4; border-color: #1a5fb4; }
+  body.easy .view-toggle:hover { background: #eaf1fb; }
+  body.easy .view-toggle .aa { background: #1a5fb4; color: #fff; }
+
+  .easy-view, .ev-explain { display: none; }
+  body.easy .easy-view, body.easy .ev-explain { display: block; }
+
+  body.easy { background: #f5f7fa; color: #1f2933; font-family: "Atkinson Hyperlegible", "Segoe UI", Arial, sans-serif; font-size: 18px; line-height: 1.7; }
+  body.easy .pve-top, body.easy .tree, body.easy .tabs, body.easy .phead .acts, body.easy .phead .tags, body.easy .gauge .bar { display: none !important; }
+  body.easy .layout { display: block; }
+  body.easy main.content { max-width: 860px; margin: 0 auto; padding: 8px 20px 40px; }
+  body.easy html { scroll-padding-top: 64px; }
+  body.easy .panel { background: #fff; border: 1px solid #d9dee4; border-radius: 10px; }
+  body.easy .phead { background: #fff; border-bottom: 1px solid #eceff2; padding: 16px 24px 10px; }
+  body.easy .phead h2 { font-size: 26px; color: #1f2933; font-weight: 700; }
+  body.easy .pbody { padding: 14px 24px 24px; }
+  body.easy b, body.easy strong { color: #1f2933; }
+  body.easy a { color: #1a5fb4; }
+  body.easy code { background: #f1f3f5; color: #8a1c1c; border-color: #e3e7eb; }
+  body.easy h3.sub { color: #1f2933; border-left-color: #1a5fb4; font-size: 20px; }
+  body.easy .summary h1 { color: #1f2933; }
+  body.easy .summary .lede { color: #3e4c59; }
+  body.easy .kv dt { color: #52606d; }
+  body.easy .gauge { background: #f4f6f8; border-color: #e3e7eb; }
+  body.easy .gauge b { color: #1a5fb4; }
+  body.easy .gauge span { color: #3e4c59; }
+  body.easy .tbl { border-color: #d9dee4; }
+  body.easy th { background: #f4f6f8; color: #1f2933; border-bottom: 2px solid #d9dee4; border-right: 0; }
+  body.easy td { border-bottom: 1px solid #eceff2; }
+  body.easy tbody tr:nth-child(even) td { background: #fafbfc; }
+  body.easy tbody tr:hover td { background: #eef5ff; }
+  body.easy td.ok, body.easy .status-ok { color: #1e7a3c; } body.easy td.err { color: #b42318; } body.easy td.warn { color: #8a5a00; }
+  body.easy td.id { color: #8a3b00; }
+  body.easy pre.code, body.easy pre.out, body.easy pre.diagram { font-family: Consolas, "Cascadia Mono", "JetBrains Mono", monospace; font-size: 15px; }
+  body.easy .incident { background: #fff; border-color: #d9dee4; border-radius: 8px; }
+  body.easy .incident .ihead { background: #f4f6f8; border-bottom-color: #e3e7eb; }
+  body.easy .incident .ihead h3 { color: #1f2933; }
+  body.easy .incident .ihead .num { color: #1a5fb4; }
+  body.easy .incident .ihead .when { color: #52606d; }
+  body.easy .lbl { color: #8a3b00; } body.easy .lbl.det { color: #1a5fb4; } body.easy .lbl.res { color: #1e7a3c; } body.easy .lbl.why { color: #7a5a00; }
+  body.easy .issue { background: #fdf3f3; }
+  body.easy .issue .head { color: #a61b1b; }
+  body.easy .issue .meta { color: #7a4a4a; }
+  body.easy .issue .row .lbl { color: #52606d; }
+  body.easy .issue .row.fix .lbl { color: #1e7a3c; }
+  body.easy .chips li { background: #eaf1fb; color: #0f3f80; border-color: #c9d6e8; border-radius: 20px; font-size: 16px; }
+  body.easy figure { background: #fff; border-color: #d9dee4; border-radius: 8px; }
+  body.easy figcaption { background: #fff; color: #3e4c59; border-top-color: #eceff2; font-size: 16px; }
+  body.easy footer { color: #52606d; }
+  body.easy footer a { color: #1a5fb4; }
+
+  .ev-explain {
+    background: #eef5ff; border-left: 4px solid #1a5fb4; border-radius: 0 8px 8px 0;
+    padding: 12px 16px; margin: 0 0 18px; color: #1f2933; font-size: 17px; line-height: 1.6;
+  }
+  .ev-explain b { color: #0f3f80; }
+  .ev-main { max-width: 860px; margin: 0 auto; padding: 28px 20px 8px; }
+  .easy-view h1 { font-size: clamp(30px, 5.5vw, 42px); line-height: 1.2; margin: 4px 0 14px; color: #1f2933; }
+  .easy-view h2 { font-size: 24px; line-height: 1.3; margin: 0 0 12px; color: #1f2933; }
+  .easy-view p { margin: 0 0 12px; }
+  .ev-kicker { color: #1e7a3c; font-weight: 700; font-size: 16px; margin: 0 !important; }
+  .ev-lede { font-size: 20px; color: #3e4c59; }
+  .ev-card { background: #fff; border: 1px solid #d9dee4; border-radius: 10px; padding: 24px 28px; margin: 20px 0; }
+  .ev-card ul { margin: 0; padding-left: 24px; }
+  .ev-card li { margin: 6px 0; }
+  .ev-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .ev-stats div { background: #f4f6f8; border-radius: 8px; padding: 12px 14px; }
+  .ev-stats b { display: block; font-size: 30px; line-height: 1.1; color: #1a5fb4; }
+  .ev-stats span { font-size: 16px; color: #3e4c59; }
+  .ev-divider { margin: 36px 0 6px !important; font-size: 28px !important; }
+  .ev-divider + p { color: #3e4c59; }
+  @media (max-width: 600px) {
+    .view-bar { padding: 0 12px; font-size: 13px; }
+    .view-toggle { font-size: 13px; padding: 6px 10px; }
+    .vb-long { display: none; }
+    .ev-card { padding: 20px 18px; }
+    body.easy { font-size: 17px; }
+    body.easy .pbody { padding: 12px 16px 18px; }
+  }
+  @media print { .view-bar, .pve-top, .tree, .lb { display: none !important; } .layout { display: block; } }
+</style>
+</head>
+<body>
+<script>
+  // Apply the saved view before the page draws. Shared with the main portfolio page,
+  // so a visitor who picked easy-read there sees it here too. ?view=easy forces it.
+  (function () {
+    var v = null;
+    try { v = new URLSearchParams(location.search).get('view'); } catch (e) {}
+    if (v !== 'easy' && v !== 'tech') { try { v = localStorage.getItem('portfolio-view'); } catch (e) {} }
+    if (v === 'easy') document.body.classList.add('easy');
+  })();
+</script>
+
+<div class="view-bar">
+  <a class="vb-home" href="https://emilagui01.github.io/">&larr; <span class="vb-long">Emil Aguirre Herrera &middot; </span>Portfolio</a>
+  <button class="view-toggle" id="viewToggle" type="button">
+    <span class="aa" aria-hidden="true">Aa</span>
+    <span class="to-easy">Easy-read view</span>
+    <span class="to-tech">Switch to tech view</span>
+  </button>
+</div>
+
+<div class="pve-top" aria-hidden="true">
+  <div class="logo"><span class="px">PRO<i>X</i>MO<i>X</i></span><span class="ve">Virtual Environment 9.2</span></div>
+  <div class="pve-search">Search</div>
+  <div class="pve-btns">
+    <a class="pve-btn" href="https://github.com/emilagui01/security-monitoring-lab" tabindex="-1">Documentation</a>
+    <span class="pve-btn blue">Create VM</span>
+    <span class="pve-btn">emil@pam</span>
+  </div>
+</div>
+
+<div class="easy-view"><main class="ev-main">
+  <p class="ev-kicker">Home Lab 4 &middot; Completed</p>
+  <h1>Catching cyberattacks in a practice network</h1>
+  <p class="ev-lede">I built a small company network on my laptop, turned on the security records that a security
+    team relies on, then safely acted out seven things real attackers do. For each one I found the evidence in the
+    records, explained what it showed, and cleaned up, the same way an IT security analyst would.</p>
+  <section class="ev-card">
+    <h2>The short version</h2>
+    <ul>
+      <li>A server platform called Proxmox, running inside my laptop, that hosts the practice network.</li>
+      <li>A company account server and an employee computer, connected like a real office.</li>
+      <li>Security settings that record sign-ins, account changes, programs starting, and hidden commands.</li>
+      <li>Seven safe attack tests: password guessing, a secret admin account, a virus test file, trying to turn off
+        antivirus, a disguised command, a program set to run on its own, and erasing the records.</li>
+      <li>All seven were caught. I also wrote a script that pulls every alert into one timeline.</li>
+    </ul>
+  </section>
+  <section class="ev-card">
+    <h2>By the numbers</h2>
+    <div class="ev-stats">
+      <div><b>7 of 7</b><span>attacks detected</span></div>
+      <div><b>15</b><span>audit and logging settings turned on</span></div>
+      <div><b>1,462</b><span>events pulled into one timeline</span></div>
+      <div><b>3</b><span>security records searched together</span></div>
+    </div>
+  </section>
+  <section class="ev-card">
+    <h2>Skills this shows</h2>
+    <ul class="chips">
+      <li>Proxmox virtualization</li><li>Windows Server and Active Directory</li><li>Group Policy</li>
+      <li>Windows Event Viewer</li><li>Microsoft Defender</li><li>PowerShell</li><li>Incident response</li>
+      <li>Threat hunting</li><li>Troubleshooting</li><li>Multi-factor authentication</li>
+    </ul>
+  </section>
+  <h2 class="ev-divider">Full project details</h2>
+  <p>Below is everything from the project. Each part starts with a short plain-English note. The dark boxes are the
+    exact commands I ran, kept as proof of the work. Click any screenshot to see it full size.</p>
+</main></div>
+
+<div class="layout">
+  <nav class="tree" aria-label="Sections">
+    <div class="view"><span>Server View</span><span>&#9881;</span></div>
+    <ul class="scroll">
+      <li class="hide-m"><a href="#summary"><span class="ico dc"></span>Datacenter</a></li>
+      <li class="l1 hide-m"><a href="#build"><span class="ico node"></span>pve</a></li>
+      <li class="l2 hide-m"><a href="#build"><span class="ico vm run"></span>101 (SEC-DC01)</a></li>
+      <li class="l2 hide-m"><a href="#build"><span class="ico vm run"></span>102 (SEC-WIN11)</a></li>
+      <li class="grp">Lab sections</li>
+      <li><a href="#summary"><span class="ico sec"></span>Summary</a></li>
+      <li><a href="#network"><span class="ico sec"></span>Network</a></li>
+      <li><a href="#build"><span class="ico sec"></span>Build</a></li>
+      <li><a href="#logging"><span class="ico sec"></span>Logging</a></li>
+      <li><a href="#tasks"><span class="ico sec"></span>Task log</a></li>
+      <li><a href="#incidents"><span class="ico sec"></span>Incidents</a></li>
+      <li><a href="#hunt"><span class="ico sec"></span>Hunting</a></li>
+      <li><a href="#troubleshooting"><span class="ico sec"></span>Troubleshooting</a></li>
+      <li><a href="#lessons"><span class="ico sec"></span>Lessons</a></li>
+      <li><a href="#labs"><span class="ico sec"></span>All labs</a></li>
+    </ul>
+  </nav>
+
+  <main class="content">
+
+  <!-- ===================== SUMMARY ===================== -->
+  <section class="panel" id="summary" aria-labelledby="h-sum">
+    <div class="phead"><h2 id="h-sum">Datacenter &middot; Security Monitoring Lab</h2><span class="tags">lab4 &middot; security</span>
+      <div class="acts"><span class="st">Running</span><span>Snapshots: 4</span></div></div>
+    <div class="tabs"><a href="#summary">Summary</a><a href="#network">Network</a><a href="#build">Hardware</a><a href="#incidents">Firewall</a><a href="#tasks">Task History</a></div>
+    <div class="pbody">
+<div class="ev-explain"><b>In plain English:</b> What this project is: a practice company network that I attacked on purpose, so I could prove the security records catch each attack and practice responding.</div>
+      <div class="summary">
+        <div>
+          <h1>Security Monitoring Lab</h1>
+          <p class="lede">A Windows domain running on Proxmox, hardened with audit policy, PowerShell logging and
+            Microsoft Defender, then attacked seven times. Every attack was caught in Event Viewer or Defender,
+            written up as an incident, and cleaned up.</p>
+          <dl class="kv">
+            <dt>Series</dt><dd>Home Lab 4 &middot; <span class="status-ok">Complete</span></dd>
+            <dt>Hypervisor</dt><dd>Proxmox VE 9.2, nested inside Hyper-V on my ThinkPad (JARVIS)</dd>
+            <dt>Domain</dt><dd><code>seclab.local</code> on Windows Server 2022</dd>
+            <dt>Client</dt><dd>Windows 11 Enterprise, domain joined</dd>
+            <dt>Tools</dt><dd>Group Policy &middot; Event Viewer &middot; Microsoft Defender &middot; PowerShell</dd>
+            <dt>Dates</dt><dd>November 7 to 21, 2026</dd>
+            <dt>Author</dt><dd>Emil Aguirre Herrera &middot; CompTIA Network+ &middot; AZ-900</dd>
+          </dl>
+        </div>
+        <div class="gauges">
+          <div class="gauge"><b>7 / 7</b><span>Attacks detected</span><div class="bar"><i style="width:100%"></i></div></div>
+          <div class="gauge"><b>15</b><span>Logging settings in one GPO</span><div class="bar"><i style="width:100%"></i></div></div>
+          <div class="gauge"><b>1,462</b><span>Events in the hunt timeline</span><div class="bar"><i style="width:82%"></i></div></div>
+          <div class="gauge"><b>3</b><span>Logs searched together</span><div class="bar"><i style="width:60%"></i></div></div>
+        </div>
+      </div>
+      <h3 class="sub">Skills</h3>
+      <ul class="chips">
+        <li>Proxmox VE</li><li>Nested virtualization</li><li>Linux bridge and NAT</li><li>MFA (TOTP)</li>
+        <li>Active Directory</li><li>Group Policy</li><li>Advanced Audit Policy</li><li>Event Viewer</li>
+        <li>Microsoft Defender</li><li>Tamper Protection</li><li>PowerShell</li><li>Incident response</li><li>Threat hunting</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===================== NETWORK ===================== -->
+  <section class="panel" id="network" aria-labelledby="h-net">
+    <div class="phead"><h2 id="h-net">Network</h2><span class="tags">pve &middot; vmbr0, vmbr1</span></div>
+    <div class="tabs"><a href="#network">Network</a><a href="#build">Hosts</a><a href="#build">DNS</a></div>
+    <div class="pbody">
+<div class="ev-explain"><b>In plain English:</b> How the pieces connect. Proxmox runs inside my laptop and gives the new lab its own private network, so it never mixes with my earlier labs. The practice computers reach the internet through Proxmox.</div>
+      <p>PVE is the only new machine on my existing lab switch. The two lab VMs live on a private Proxmox bridge,
+        <code>vmbr1</code>, and reach the internet through NAT on PVE. Labs 1 to 3 were left untouched.</p>
+<pre class="diagram">
+  <b>Internet</b>
+     |
+  JARVIS  (ThinkPad T14, Hyper-V host)
+     |  LabSwitch + LabNAT   192.168.50.0/24   gateway 192.168.50.1
+     |
+     +-- Labs 1 to 3 (CLIENT01, DC01, HELPDESK1)   <em>untouched, kept off while PVE runs</em>
+     |
+     +-- <em>PVE</em>  Proxmox VE 9.2 (nested)   vmbr0 = 192.168.50.250
+            |
+            vmbr1  10.10.10.0/24  (no physical port, NAT out vmbr0)
+            |
+            +-- <em>SEC-DC01</em>   10.10.10.20   Server 2022, domain controller, DNS
+            +-- <em>SEC-WIN11</em>  10.10.10.30   Windows 11 Enterprise, the "victim"
+</pre>
+      <div class="tbl"><table>
+        <thead><tr><th>Machine</th><th>Runs on</th><th>IP</th><th>RAM</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td>PVE</td><td>Hyper-V on JARVIS, LabSwitch</td><td class="id">192.168.50.250</td><td>16 GB</td><td>Proxmox host, NAT for the lab</td></tr>
+          <tr><td>SEC-DC01</td><td>Proxmox, vmbr1</td><td class="id">10.10.10.20</td><td>4 GB</td><td>Domain controller and DNS for seclab.local</td></tr>
+          <tr><td>SEC-WIN11</td><td>Proxmox, vmbr1</td><td class="id">10.10.10.30</td><td>6 GB</td><td>Domain-joined client, Defender endpoint</td></tr>
+        </tbody>
+      </table></div>
+      <p>Lab VMs use gateway <code>10.10.10.1</code> (Proxmox) and DNS <code>10.10.10.20</code> (SEC-DC01).</p>
+    </div>
+  </section>
+
+  <!-- ===================== BUILD ===================== -->
+  <section class="panel" id="build" aria-labelledby="h-build">
+    <div class="phead"><h2 id="h-build">Node 'pve' &middot; Build</h2><span class="tags">steps 1 to 7</span>
+      <div class="acts"><span>Shell</span><span>Reboot</span></div></div>
+    <div class="tabs"><a href="#build">Hardware</a><a href="#b-proxmox">Proxmox</a><a href="#b-net">vmbr1</a><a href="#b-domain">Domain</a><a href="#b-snap">Snapshots</a></div>
+    <div class="pbody">
+<div class="ev-explain"><b>In plain English:</b> Building the practice network. I installed Proxmox inside my laptop, gave it a private network and two-step sign-in, then built the company account server and an employee computer and joined them together. I saved restore points along the way so any test could be undone in seconds.</div>
+
+      <h3 class="sub" id="b-proxmox">1. Proxmox inside Hyper-V</h3>
+      <p>Installing Proxmox directly on the laptop would have wiped Windows, so it runs as a Hyper-V VM with nested
+        virtualization turned on. I checked the ISO's SHA256 hash against the Proxmox site before using it.</p>
+<pre class="code ps1">(Get-FileHash C:\ISO\proxmox-ve_9.2-1.iso -Algorithm SHA256).Hash -eq '4e88fe41...ef2c6c'   # True
+
+New-VM -Name PVE -Generation 1 -MemoryStartupBytes 16GB -NewVHDPath "C:\HyperV\PVE.vhdx" -NewVHDSizeBytes 200GB -SwitchName "LabSwitch"
+Set-VM -VMName PVE -ProcessorCount 4 -StaticMemory -AutomaticCheckpointsEnabled $false
+Set-VMProcessor -VMName PVE -ExposeVirtualizationExtensions $true   # nested virtualization
+Set-VMDvdDrive -VMName PVE -Path "C:\ISO\proxmox-ve.iso"</pre>
+      <p>Proxmox was installed with the text installer (the graphical one can't drive Hyper-V's display), then
+        checked from inside: <code>/dev/kvm</code> present and 8 <code>vmx</code> CPU flags, so it can run its own VMs.
+        I switched to the free No-Subscription update repository and fully upgraded.</p>
+      <div class="shots">
+        <figure><button class="shot" type="button"><img src="b-iso-hash.jpg" alt="PowerShell showing the Proxmox ISO hash check returning True, the old lab VMs off, and 697 GB free" loading="lazy"></button><figcaption>ISO hash verified, old labs off</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="b-installer-summary.jpg" alt="Proxmox VE 9.2-1 text installer summary: ext4, America/Chicago, hostname pve.seclab.local, 192.168.50.250/24" loading="lazy"></button><figcaption>Installer summary (email redacted)</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="b-kvm-check.jpg" alt="Proxmox shell showing /dev/kvm, 8 vmx flags, failed ping to JARVIS and successful ping to download.proxmox.com" loading="lazy"></button><figcaption>KVM works inside Hyper-V</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="b-pve-dashboard.jpg" alt="Proxmox web dashboard on first login with the enterprise repository update error in the task log" loading="lazy"></button><figcaption>First login, before the repo fix</figcaption></figure>
+      </div>
+
+      <h3 class="sub" id="b-net">2. Private lab network and MFA</h3>
+      <p>Windows only allows one NAT network, and my earlier labs already use it. So PVE plugs into the existing
+        LabSwitch, and Proxmox creates its own private bridge with NAT for the new VMs:</p>
+<pre class="code conf"># /etc/network/interfaces (added at the bottom)
+auto vmbr1
+iface vmbr1 inet static
+        address 10.10.10.1/24
+        bridge-ports none
+        bridge-stp off
+        bridge-fd 0
+        post-up   echo 1 &gt; /proc/sys/net/ipv4/ip_forward
+        post-up   iptables -t nat -A POSTROUTING -s '10.10.10.0/24' -o vmbr0 -j MASQUERADE
+        post-down iptables -t nat -D POSTROUTING -s '10.10.10.0/24' -o vmbr0 -j MASQUERADE</pre>
+      <p>The web console's root login now requires a TOTP code from an authenticator app (something you know plus
+        something you have), with single-use recovery keys stored in a password manager.</p>
+      <div class="shots">
+        <figure><button class="shot" type="button"><img src="b-vmbr1.jpg" alt="Proxmox shell showing vmbr1 at 10.10.10.1/24, ip_forward 1 and the MASQUERADE rule" loading="lazy"></button><figcaption>vmbr1, forwarding and NAT rule</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="b-mfa-prompt.jpg" alt="Proxmox login asking for a second login factor with TOTP App and Recovery Key options" loading="lazy"></button><figcaption>Second factor required at login</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="b-iso-upload.jpg" alt="Proxmox ISO Images list with the Windows 11 Enterprise and Server 2022 evaluation ISOs" loading="lazy"></button><figcaption>Windows ISOs uploaded</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="b-checkpoints.jpg" alt="Hyper-V Manager with CLIENT01, DC01 and HELPDESK1 off and PVE running, with Step 4 checkpoints" loading="lazy"></button><figcaption>Hyper-V checkpoints of PVE</figcaption></figure>
+      </div>
+
+      <h3 class="sub" id="b-domain">3. Domain controller and client</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>VM</th><th>Machine</th><th>Disk</th><th>CPU</th><th>RAM</th><th>NIC</th></tr></thead>
+        <tbody>
+          <tr><td>101 SEC-DC01</td><td>q35, OVMF (UEFI), TPM 2.0</td><td>SATA 60 GB</td><td>2 cores, host</td><td>4 GB</td><td>E1000E on vmbr1</td></tr>
+          <tr><td>102 SEC-WIN11</td><td>q35, OVMF (UEFI), TPM 2.0</td><td>SATA 64 GB</td><td>2 cores, host</td><td>6 GB</td><td>E1000E on vmbr1</td></tr>
+        </tbody>
+      </table></div>
+      <p>SATA and E1000E use drivers Windows already has, so no VirtIO driver disc was needed.</p>
+<pre class="code ps1"># SEC-DC01
+New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress 10.10.10.20 -PrefixLength 24 -DefaultGateway 10.10.10.1
+Install-WindowsFeature AD-Domain-Services -IncludeManagementTools
+Install-ADDSForest -DomainName "seclab.local" -DomainNetbiosName "SECLAB" -InstallDns
+New-ADOrganizationalUnit -Name "Lab Users"
+New-ADUser -Name "Tony Stark" -SamAccountName tstark -Path "OU=Lab Users,DC=seclab,DC=local" `
+  -AccountPassword (Read-Host -AsSecureString "Password for tstark") -Enabled $true
+
+# SEC-WIN11 (DNS must point at the DC to find the domain)
+New-NetIPAddress -InterfaceAlias "Ethernet" -IPAddress 10.10.10.30 -PrefixLength 24 -DefaultGateway 10.10.10.1
+Set-DnsClientServerAddress -InterfaceAlias "Ethernet" -ServerAddresses 10.10.10.20
+Add-Computer -DomainName seclab.local -NewName SEC-WIN11 -Credential SECLAB\Administrator -Restart</pre>
+      <p>Once SEC-DC01 reached the internet, the MASQUERADE rule's counter went from 0 to 52 packets, proof the NAT
+        was doing the work.</p>
+      <div class="shots">
+        <figure><button class="shot" type="button"><img src="b-dc-hardware.jpg" alt="Proxmox Hardware tab for SEC-DC01: 4 GiB, 2 cores host, OVMF, q35, SATA 60G, e1000e on vmbr1, TPM v2.0" loading="lazy"></button><figcaption>SEC-DC01 hardware on vmbr1</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="b-masquerade.jpg" alt="iptables output showing the MASQUERADE rule with 52 packets counted" loading="lazy"></button><figcaption>NAT counter: 0 to 52 packets</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="b-dc-signin.jpg" alt="SEC-DC01 sign-in screen showing SECLAB\Administrator after promotion" loading="lazy"></button><figcaption>Promoted: SECLAB\Administrator</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="b-addomain.jpg" alt="Get-ADDomain showing seclab.local and SECLAB, and Get-ADUser tstark enabled in OU Lab Users" loading="lazy"></button><figcaption>Domain and test user verified</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="b-win11-confirm.jpg" alt="Proxmox Create VM confirm tab for SEC-WIN11 with 6144 MB, TPM and net0 on vmbr1" loading="lazy"></button><figcaption>SEC-WIN11 settings before creation</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="b-whoami.jpg" alt="SEC-WIN11 PowerShell showing whoami seclab\tstark, domain seclab.local and microsoft.com resolving" loading="lazy"></button><figcaption>Signed in as seclab\tstark</figcaption></figure>
+      </div>
+
+      <h3 class="sub" id="b-snap">4. Restore points</h3>
+      <p>Clocks were matched first (SEC-WIN11 syncs time from SEC-DC01, which Kerberos needs within 5 minutes), then
+        each VM got a snapshot before anything risky, so every attack could be undone in seconds.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Snapshot</th><th>VMs</th><th>State</th></tr></thead>
+        <tbody>
+          <tr><td class="id">pre-dc</td><td>SEC-DC01</td><td>Server installed, IP set, before promotion</td></tr>
+          <tr><td class="id">dc-promoted</td><td>SEC-DC01</td><td>Domain controller for seclab.local</td></tr>
+          <tr><td class="id">clean-baseline</td><td>Both</td><td>Domain built, no logging changes, no attacks</td></tr>
+          <tr><td class="id">logging-on</td><td>Both</td><td>Security Logging GPO applied, ready for attacks</td></tr>
+        </tbody>
+      </table></div>
+      <div class="shots">
+        <figure><button class="shot" type="button"><img src="b-snapshots.jpg" alt="Proxmox Snapshots tab for SEC-DC01 showing pre-dc, dc-promoted, clean-baseline and logging-on" loading="lazy"></button><figcaption>SEC-DC01 snapshot chain</figcaption></figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== LOGGING ===================== -->
+  <section class="panel" id="logging" aria-labelledby="h-log">
+    <div class="phead"><h2 id="h-log">Security Logging GPO</h2><span class="tags">step 8</span></div>
+    <div class="tabs"><a href="#logging">Policy</a><a href="#l-lockout">Lockout</a><a href="#l-fix">Troubleshooting</a><a href="#l-defender">Defender</a></div>
+    <div class="pbody">
+<div class="ev-explain"><b>In plain English:</b> Out of the box, Windows keeps very few security records. I created one company-wide setting that makes both computers record sign-ins, account changes, every program that starts, and the actual code of any PowerShell command. One part didn't work at first, and the troubleshooting is below.</div>
+      <p>One GPO, <b>Security Logging</b>, linked to the domain. Every path starts at
+        <code>Computer Configuration &gt; Policies</code>.</p>
+      <div class="tbl"><table>
+        <thead><tr><th>Setting</th><th>Value</th><th>Catches</th></tr></thead>
+        <tbody>
+          <tr><td>Force audit policy subcategory settings to override category settings</td><td>Enabled</td><td>Lets the detailed settings below win</td></tr>
+          <tr><td>Audit Credential Validation</td><td>Success, Failure</td><td>Password checks (4776)</td></tr>
+          <tr><td>Audit Kerberos Authentication Service</td><td>Success, Failure</td><td>Domain logons, bad passwords (4768, 4771)</td></tr>
+          <tr><td>Audit User Account Management</td><td>Success, Failure</td><td>Users created, disabled, locked out (4720, 4725, 4740)</td></tr>
+          <tr><td>Audit Security Group Management</td><td>Success, Failure</td><td>Group membership changes (4728, 4729)</td></tr>
+          <tr><td>Audit Logon</td><td>Success, Failure</td><td>Logons and failed logons (4624, 4625)</td></tr>
+          <tr><td>Audit Account Lockout</td><td>Failure</td><td>Logons blocked by a lockout</td></tr>
+          <tr><td>Audit Special Logon</td><td>Success</td><td>Admin-level logons (4672)</td></tr>
+          <tr><td>Audit Process Creation</td><td>Success</td><td>Every program that starts (4688)</td></tr>
+          <tr><td>Audit Other Object Access Events</td><td>Success, Failure</td><td>Scheduled tasks (4698, 4699)</td></tr>
+          <tr><td>Audit Audit Policy Change</td><td>Success</td><td>Changes to what gets logged (4719)</td></tr>
+          <tr><td>Audit Security System Extension</td><td>Success</td><td>New services installed (4697)</td></tr>
+          <tr><td>Include command line in process creation events</td><td>Enabled</td><td>The full command, not just the program</td></tr>
+          <tr><td>Turn on PowerShell Script Block Logging</td><td>Enabled</td><td>The decoded PowerShell that ran (4104)</td></tr>
+          <tr><td>Security log maximum size</td><td>512,000 KB</td><td>About 500 MB of history instead of 20 MB</td></tr>
+        </tbody>
+      </table></div>
+
+      <h3 class="sub" id="l-lockout">Account lockout</h3>
+<pre class="code ps1">Set-ADDefaultDomainPasswordPolicy -Identity seclab.local -LockoutThreshold 5 `
+  -LockoutDuration 00:15:00 -LockoutObservationWindow 00:15:00</pre>
+      <p>Lockout rules live in the Default Domain Policy because password and lockout settings only work at the domain level.</p>
+
+      <h3 class="sub" id="l-fix">Troubleshooting: audit policy saved but never applied</h3>
+      <div class="tbl"><table>
+        <thead><tr><th>Check</th><th>Result</th><th>What it told me</th></tr></thead>
+        <tbody>
+          <tr><td><code>gpresult /r</code></td><td class="ok">Applied</td><td>The GPO reached both machines</td></tr>
+          <tr><td>Script block logging registry key</td><td class="ok">1</td><td>The registry part of the GPO worked</td></tr>
+          <tr><td><code>auditpol /get /category:*</code></td><td class="err">No Auditing</td><td>The audit part did not apply. The DC even lost its defaults, because "force subcategory" was on with nothing to replace them</td></tr>
+          <tr><td><code>audit.csv</code> in SYSVOL</td><td class="ok">All 11 settings</td><td>The settings were saved correctly</td></tr>
+          <tr><td><code>gPCMachineExtensionNames</code></td><td class="err">Missing F3CCC681</td><td><b>Root cause:</b> the Audit Policy Configuration client-side extension wasn't registered on the GPO, so Windows never ran the code that reads <code>audit.csv</code></td></tr>
+        </tbody>
+      </table></div>
+      <p><b>Fix:</b> toggling one audit setting off and back on in the GPO editor re-registered the extension
+        <code>{F3CCC681-B74C-4060-9F26-CD84525DCA2A}</code>. After <code>gpupdate /force</code>, both machines showed
+        the expected Success and Failure auditing. A GPO can hold correct settings and still not apply them, so I
+        narrowed it down one layer at a time: applied, then effective, then stored, then registered.</p>
+      <div class="shots">
+        <figure><button class="shot" type="button"><img src="l-auditpol-empty.jpg" alt="auditpol on SEC-DC01 showing No Auditing for every subcategory" loading="lazy"></button><figcaption>Symptom: No Auditing on the DC</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="l-audit-csv.jpg" alt="Contents of audit.csv in SYSVOL listing all 11 subcategories with their values" loading="lazy"></button><figcaption>audit.csv was correct</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="l-guid-missing.jpg" alt="gPCMachineExtensionNames listing only the Registry and Security extensions" loading="lazy"></button><figcaption>Root cause: extension missing</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="l-guid-fixed.jpg" alt="gPCMachineExtensionNames now ending with the F3CCC681 Audit Policy Configuration extension" loading="lazy"></button><figcaption>Fixed: F3CCC681 registered</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="l-auditpol-dc.jpg" alt="auditpol on SEC-DC01 showing Success and Failure for Logon, Credential Validation, Kerberos and Other Object Access" loading="lazy"></button><figcaption>DC auditing working</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="l-auditpol-win11.jpg" alt="auditpol on SEC-WIN11 matching the DC after gpupdate" loading="lazy"></button><figcaption>SEC-WIN11 matches</figcaption></figure>
+      </div>
+
+      <h3 class="sub" id="l-defender">Microsoft Defender baseline</h3>
+<pre class="code ps1">Update-MpSignature
+Get-MpComputerStatus | Select-Object AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, IsTamperProtected</pre>
+      <p>All four returned True on SEC-WIN11, with signatures updated that day.</p>
+      <div class="shots">
+        <figure><button class="shot" type="button"><img src="l-gpo-report.jpg" alt="Security Logging GPO HTML report and lockout policy output" loading="lazy"></button><figcaption>GPO report and lockout policy</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="l-defender-status.jpg" alt="Get-MpComputerStatus on SEC-WIN11 with all four values True" loading="lazy"></button><figcaption>Defender and Tamper Protection on</figcaption></figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== TASK LOG ===================== -->
+  <section class="panel" id="tasks" aria-labelledby="h-tasks">
+    <div class="phead"><h2 id="h-tasks">Tasks &middot; Incident timeline</h2><span class="tags">step 9</span></div>
+    <div class="tabs"><a href="#tasks">Tasks</a><a href="#incidents">Cluster log</a></div>
+    <div class="pbody">
+<div class="ev-explain"><b>In plain English:</b> A quick list of all seven attack tests: when each happened, which record caught it, and what I did about it. The details for each one are in the next section.</div>
+      <div class="tbl"><table>
+        <thead><tr><th>Start time</th><th>Node</th><th>Description</th><th>Detected by</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td class="nw">Nov 20 5:44 PM</td><td>SEC-DC01</td><td><a href="#s1">1. Password guessing and lockout</a></td><td class="id">4771, 4740</td><td class="ok">OK</td></tr>
+          <tr><td class="nw">Nov 20 6:03 PM</td><td>SEC-DC01</td><td><a href="#s2">2. Backdoor Domain Admin</a></td><td class="id">4720, 4728</td><td class="ok">OK</td></tr>
+          <tr><td class="nw">Nov 20 6:20 PM</td><td>SEC-WIN11</td><td><a href="#s3">3. Malware download (EICAR)</a></td><td class="id">SmartScreen, 1116, 1117</td><td class="ok">OK</td></tr>
+          <tr><td class="nw">Nov 20 6:54 PM</td><td>SEC-WIN11</td><td><a href="#s4">4. Turning off Defender</a></td><td class="id">5013, 5001</td><td class="ok">OK</td></tr>
+          <tr><td class="nw">Nov 20 7:19 PM</td><td>SEC-WIN11</td><td><a href="#s5">5. Encoded PowerShell</a></td><td class="id">4688, 4104</td><td class="ok">OK</td></tr>
+          <tr><td class="nw">Nov 20 7:42 PM</td><td>SEC-WIN11</td><td><a href="#s6">6. Scheduled task persistence</a></td><td class="id">4698, 4699</td><td class="ok">OK</td></tr>
+          <tr><td class="nw">Nov 21 7:25 PM</td><td>SEC-WIN11</td><td><a href="#s7">7. Clearing the Security log</a></td><td class="id">1102</td><td class="ok">OK</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <!-- ===================== INCIDENTS ===================== -->
+  <section class="panel" id="incidents" aria-labelledby="h-inc">
+    <div class="phead"><h2 id="h-inc">Incidents &middot; Detect and respond</h2><span class="tags">7 scenarios</span></div>
+    <div class="tabs"><a href="#s1">1</a><a href="#s2">2</a><a href="#s3">3</a><a href="#s4">4</a><a href="#s5">5</a><a href="#s6">6</a><a href="#s7">7</a></div>
+    <div class="pbody">
+<div class="ev-explain"><b>In plain English:</b> Each test below shows what I did, how the records caught it, how I fixed it, and why it matters. All of the tests were safe and stayed inside the practice network.</div>
+
+      <article class="incident" id="s1">
+        <div class="ihead"><span class="num">#1</span><h3>Password guessing and lockout</h3><span class="when">Nov 20, 5:44:22 to 5:44:54 PM &middot; logged on SEC-DC01</span></div>
+        <div class="ibody">
+          <div class="row"><span class="lbl">Simulate</span>Entered a wrong password for <code>SECLAB\tstark</code> six times at the SEC-WIN11 sign-in screen until Windows reported the account locked out.</div>
+          <div class="row"><span class="lbl det">Detect</span>Domain logons are checked on the DC, so the evidence is in <b>SEC-DC01's</b> Security log, not the client's.</div>
+          <div class="tbl"><table>
+            <thead><tr><th>Event</th><th>Time</th><th>Key fields</th></tr></thead>
+            <tbody>
+              <tr><td class="id">4771 &times;8</td><td class="nw">5:44:22 to 5:44:54</td><td>Kerberos pre-auth failed for tstark, Client Address <code>::ffff:10.10.10.30</code>, Failure Code <code>0x18</code> (bad password)</td></tr>
+              <tr><td class="id">4740</td><td class="nw">5:44:52</td><td>Account locked out: tstark, <b>Caller Computer Name: SEC-WIN11</b></td></tr>
+            </tbody>
+          </table></div>
+          <p>Eight 4771s for six attempts: Windows can send two Kerberos requests for one attempt, and the last one came
+            after the lockout. Older 4771s for <code>SEC-WIN11$</code> were the computer account reconnecting, normal background noise.</p>
+          <div class="row"><span class="lbl res">Respond</span>The same fix as a real locked-out user ticket:</div>
+<pre class="code ps1">Search-ADAccount -LockedOut | Select-Object Name, SamAccountName
+Unlock-ADAccount tstark</pre>
+          <div class="row"><span class="lbl why">Why</span>Five failures on one account is a forgotten password. Failures across many accounts from one computer is password spraying. 4740's Caller Computer Name tells them apart.</div>
+          <div class="shots">
+            <figure><button class="shot" type="button"><img src="s1-locked.jpg" alt="Windows 11 sign-in showing the referenced account is currently locked out" loading="lazy"></button><figcaption>Account locked after 5 attempts</figcaption></figure>
+            <figure><button class="shot" type="button"><img src="s1-4740.jpg" alt="Event 4740 for tstark with Caller Computer Name SEC-WIN11" loading="lazy"></button><figcaption>4740: locked out, from SEC-WIN11</figcaption></figure>
+            <figure><button class="shot" type="button"><img src="s1-4771.jpg" alt="Event 4771 showing Failure Code 0x18" loading="lazy"></button><figcaption>4771: Failure Code 0x18</figcaption></figure>
+            <figure><button class="shot" type="button"><img src="s1-unlock.jpg" alt="PowerShell finding tstark locked out and unlocking the account" loading="lazy"></button><figcaption>Found and unlocked</figcaption></figure>
+          </div>
+        </div>
+      </article>
+
+      <article class="incident" id="s2">
+        <div class="ihead"><span class="num">#2</span><h3>Backdoor Domain Admin account</h3><span class="when">Nov 20, 6:03:41 to 6:04:49 PM &middot; SEC-DC01</span></div>
+        <div class="ibody">
+          <div class="row"><span class="lbl">Simulate</span>An attacker with access creates a boring-sounding account and makes it a Domain Admin:</div>
+<pre class="code ps1">New-ADUser -Name "backup_svc" -SamAccountName backup_svc -AccountPassword (Read-Host -AsSecureString "Password") -Enabled $true
+Add-ADGroupMember "Domain Admins" backup_svc</pre>
+          <div class="tbl"><table>
+            <thead><tr><th>Event</th><th>Time</th><th>Key fields</th></tr></thead>
+            <tbody>
+              <tr><td class="id">4720</td><td class="nw">6:03:41</td><td>User account created: <b>backup_svc</b>, by SECLAB\Administrator</td></tr>
+              <tr><td class="id">4728</td><td class="nw">6:04:49</td><td>Member <code>CN=backup_svc</code> added to <b>Domain Admins</b>, TargetSid ending in <code>-512</code></td></tr>
+            </tbody>
+          </table></div>
+          <div class="row"><span class="lbl res">Respond</span>Removed and disabled the account, then confirmed only Administrator remained:</div>
+<pre class="code ps1">Remove-ADGroupMember "Domain Admins" backup_svc -Confirm:$false
+Disable-ADAccount backup_svc
+Get-ADGroupMember "Domain Admins" | Select-Object Name     # Administrator</pre>
+          <div class="row"><span class="lbl why">Why</span>Every domain uses RID 512 for Domain Admins, so an alert on any 4728 whose TargetSid ends in -512 catches this even if the group is renamed.</div>
+          <div class="shots">
+            <figure><button class="shot" type="button"><img src="s2-commands.jpg" alt="PowerShell creating backup_svc and adding it to Domain Admins" loading="lazy"></button><figcaption>The "attack"</figcaption></figure>
+            <figure><button class="shot" type="button"><img src="s2-4720.jpg" alt="Event 4720 showing new account backup_svc" loading="lazy"></button><figcaption>4720: backup_svc created</figcaption></figure>
+            <figure><button class="shot" type="button"><img src="s2-4728.jpg" alt="Event 4728 Details tab showing backup_svc added to Domain Admins with TargetSid ending 512" loading="lazy"></button><figcaption>4728: added to Domain Admins</figcaption></figure>
+            <figure><button class="shot" type="button"><img src="s2-cleanup.jpg" alt="PowerShell removing backup_svc from Domain Admins, disabling it, and listing only Administrator" loading="lazy"></button><figcaption>Removed, disabled, verified</figcaption></figure>
+          </div>
+        </div>
+      </article>
+
+      <article class="incident" id="s3">
+        <div class="ihead"><span class="num">#3</span><h3>Malware download (EICAR test file)</h3><span class="when">Nov 20, 6:19 to 6:26 PM &middot; SEC-WIN11 as tstark</span></div>
+        <div class="ibody">
+          <div class="row"><span class="lbl">Simulate</span>Downloaded the EICAR test files from eicar.org. EICAR is a harmless text string every antivirus is built to flag, so detection can be tested without real malware.</div>
+          <div class="row"><span class="lbl det">Detect</span>Two layers caught it:</div>
+          <div class="tbl"><table>
+            <thead><tr><th>Layer</th><th>Time</th><th>What happened</th></tr></thead>
+            <tbody>
+              <tr><td>Edge SmartScreen</td><td class="nw">6:19 PM</td><td>Blocked <code>eicar_com.zip</code> before it was saved</td></tr>
+              <tr><td class="id">1116 / 1117</td><td class="nw">6:20 PM</td><td>A first detection and block while the test page was open</td></tr>
+              <tr><td class="id">1116</td><td class="nw">6:23:06</td><td><code>Virus:DOS/EICAR_Test_File</code>, Severe, <code>C:\Users\tstark\Downloads\eicar.txt</code>, Real-Time Protection</td></tr>
+              <tr><td class="id">1117</td><td class="nw">6:26:41</td><td>Action: Quarantine. Process: Notepad.exe, the program that tried to write the file</td></tr>
+            </tbody>
+          </table></div>
+          <p>Viewing the .txt in the browser didn't trigger a popup, because nothing was saved to disk. Saving the same
+            string from Notepad did: "Operation did not complete successfully because the file contains a virus."</p>
+          <div class="row"><span class="lbl res">Respond</span>Protection history &gt; Actions &gt; Remove. Both entries now show Threat removed and Threat blocked.</div>
+          <div class="row"><span class="lbl why">Why</span>Endpoint protection works in layers. The browser stops what it can, and Defender catches what lands on disk, logging which program wrote it.</div>
+          <div class="shots">
+            <figure><button class="shot" type="button"><img src="s3-edge-block.jpg" alt="Edge downloads panel: eicar_com.zip was blocked as unsafe" loading="lazy"></button><figcaption>SmartScreen blocked the zip</figcaption></figure>
+            <figure><button class="shot" type="button"><img src="s3-notepad.jpg" alt="Notepad error that the file contains a virus, with a Threats found notification" loading="lazy"></button><figcaption>Defender blocked the save</figcaption></figure>
+            <figure><button class="shot" type="button"><img src="s3-1116.jpg" alt="Event 1116 Virus:DOS/EICAR_Test_File, Severe, path eicar.txt" loading="lazy"></button><figcaption>1116: detected</figcaption></figure>
+            <figure><button class="shot" type="button"><img src="s3-1117.jpg" alt="Event 1117 Action Quarantine with process Notepad.exe" loading="lazy"></button><figcaption>1117: quarantined</figcaption></figure>
+            <figure><button class="shot" type="button"><img src="s3-history.jpg" alt="Windows Security Protection history showing Threat removed and Threat blocked" loading="lazy"></button><figcaption>Threat removed</figcaption></figure>
+          </div>
+        </div>
+      </article>
+
+      <article class="incident" id="s4">
+        <div class="ihead"><span class="num">#4</span><h3>Turning off Defender</h3><span class="when">Nov 20, 6:54 to 7:08 PM &middot; SEC-WIN11</span></div>
+        <div class="ibody">
+          <div class="row"><span class="lbl">Simulate</span>Disabling security tools is one of the first things ransomware does. From an admin PowerShell:</div>
+<pre class="code ps1">Set-MpPreference -DisableRealtimeMonitoring $true
+Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled, IsTamperProtected</pre>
+          <div class="tbl"><table>
+            <thead><tr><th>Event</th><th>Time</th><th>What it shows</th></tr></thead>
+            <tbody>
+              <tr><td class="id">5013</td><td class="nw">6:54:11</td><td><b>Tamper Protection blocked</b> the change to <code>DisableRealtimeMonitoring</code>, even from an admin</td></tr>
+              <tr><td class="id">5007</td><td class="nw">6:58 to 6:59</td><td>Configuration changed as Tamper Protection was switched off by hand</td></tr>
+              <tr><td class="id">5001</td><td class="nw">7:08:30</td><td><b>Real-time protection disabled</b>, which only worked with Tamper Protection off</td></tr>
+              <tr><td class="id">5013</td><td class="nw">6:59:06, 7:08:52</td><td>Tamper Protection <b>reverted</b> the changed settings when it was turned back on</td></tr>
+            </tbody>
+          </table></div>
+          <div class="row"><span class="lbl res">Respond</span>Re-enabled real-time protection and Tamper Protection, then confirmed both True:</div>
+<pre class="code ps1">Set-MpPreference -DisableRealtimeMonitoring $false
+Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled, IsTamperProtected   # True  True</pre>
+          <div class="row"><span class="lbl why">Why</span>5013 next to 5001 shows exactly what Tamper Protection buys you. 5001 and 5007 should be high-priority alerts.</div>
+          <div class="shots">
+            <figure><button class="shot" type="button"><img src="s4-5013.jpg" alt="Event 5013 Tamper Protection blocked a change to DisableRealtimeMonitoring" loading="lazy"></button><figcaption>5013: blocked while protected</figcaption></figure>
+            <figure><button class="shot" type="button"><img src="s4-commands.jpg" alt="PowerShell showing protection staying True while Tamper Protection was on" loading="lazy"></button><figcaption>Still True after the attempt</figcaption></figure>
+            <figure><button class="shot" type="button"><img src="s4-5001.jpg" alt="Event 5001 real-time protection scanning was disabled" loading="lazy"></button><figcaption>5001: disabled once unprotected</figcaption></figure>
+            <figure><button class="shot" type="button"><img src="s4-restored.jpg" alt="Get-MpComputerStatus showing True and True after restoring" loading="lazy"></button><figcaption>Restored: True / True</figcaption></figure>
+          </div>
+        </div>
+      </article>
+
+      <article class="incident" id="s5">
+        <div class="ihead"><span class="num">#5</span><h3>Encoded PowerShell command</h3><span class="when">Nov 20, 7:19:47 PM &middot; SEC-WIN11 as tstark</span></div>
+        <div class="ibody">
+          <div class="row"><span class="lbl">Simulate</span>Attackers Base64-encode commands so a quick look at the logs shows nothing readable. This one only prints text:</div>
+<pre class="code ps1">$c = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes('Write-Output "lab test"'))
+powershell -EncodedCommand $c</pre>
+          <div class="tbl"><table>
+            <thead><tr><th>Event</th><th>Time</th><th>What it shows</th></tr></thead>
+            <tbody>
+              <tr><td class="id">4688</td><td class="nw">7:19:47</td><td><code>powershell.exe -EncodedCommand</code> plus unreadable text, started by another powershell.exe, Medium integrity (normal user)</td></tr>
+              <tr><td class="id">4104</td><td class="nw">7:19:49</td><td>Script block logging recorded the <b>decoded</b> command: <code>Write-Output "lab test"</code>, user SECLAB\tstark</td></tr>
+            </tbody>
+          </table></div>
+          <p>4688 says something suspicious ran. 4104 says what it actually did. PowerShell also marked some 4104 events
+            as <b>Warning</b> on its own when it saw suspicious code, a free second flag. Reading the Security log needed an
+            admin Event Viewer: a standard user gets Access is denied, which is by design.</p>
+          <div class="row"><span class="lbl res">Respond</span>Decoded and reviewed: benign test. In a real case, the next steps are checking the parent process and isolating the host.</div>
+          <div class="shots">
+            <figure><button class="shot" type="button"><img src="s5-4688.jpg" alt="Event 4688 with process command line powershell.exe -EncodedCommand" loading="lazy"></button><figcaption>4688: encoded, unreadable</figcaption></figure>
+            <figure><button class="shot" type="button"><img src="s5-4104.jpg" alt="Event 4104 showing Write-Output lab test run by SECLAB\tstark" loading="lazy"></button><figcaption>4104: decoded</figcaption></figure>
+          </div>
+        </div>
+      </article>
+
+      <article class="incident" id="s6">
+        <div class="ihead"><span class="num">#6</span><h3>Persistence with a scheduled task</h3><span class="when">Nov 20, 7:42:14 to 7:46:53 PM &middot; SEC-WIN11</span></div>
+        <div class="ibody">
+          <div class="row"><span class="lbl">Simulate</span>Attackers create tasks so their program runs again after every sign-in, named to look harmless:</div>
+<pre class="code ps1">schtasks /create /tn "Updater" /tr notepad.exe /sc onlogon</pre>
+          <div class="tbl"><table>
+            <thead><tr><th>Event</th><th>Time</th><th>What it shows</th></tr></thead>
+            <tbody>
+              <tr><td class="id">4698</td><td class="nw">7:42:14</td><td>Task <code>\Updater</code> created by SECLAB\Administrator, with its full XML definition in Task Content</td></tr>
+              <tr><td class="id">4699</td><td class="nw">7:46:53</td><td>Task deleted</td></tr>
+            </tbody>
+          </table></div>
+          <div class="row"><span class="lbl res">Respond</span><code>schtasks /delete /tn "Updater" /f</code></div>
+          <div class="row"><span class="lbl why">Why</span>4698 keeps the whole task definition, so even if the attacker deletes the task later, what it ran stays on record.</div>
+          <div class="shots">
+            <figure><button class="shot" type="button"><img src="s6-create.jpg" alt="schtasks creating the Updater task" loading="lazy"></button><figcaption>Task created</figcaption></figure>
+            <figure><button class="shot" type="button"><img src="s6-4698.jpg" alt="Event 4698 showing task name Updater and its XML Task Content" loading="lazy"></button><figcaption>4698: full definition logged</figcaption></figure>
+            <figure><button class="shot" type="button"><img src="s6-4699.jpg" alt="Event 4699 a scheduled task was deleted" loading="lazy"></button><figcaption>4699: cleanup logged</figcaption></figure>
+          </div>
+        </div>
+      </article>
+
+      <article class="incident" id="s7">
+        <div class="ihead"><span class="num">#7</span><h3>Covering tracks: clearing the log</h3><span class="when">Nov 21, 7:25:47 PM &middot; SEC-WIN11</span></div>
+        <div class="ibody">
+          <div class="row"><span class="lbl">Simulate</span>Run last, after hunting. Evidence was exported first, the way a responder saves it before anything gets wiped:</div>
+<pre class="code ps1">wevtutil epl Security C:\Users\Public\SEC-WIN11-Security.evtx    # export a copy
+wevtutil cl Security                                             # clear the log</pre>
+          <div class="row"><span class="lbl det">Detect</span>The Security log dropped from more than 13,000 events to 2. One is <b>1102: "The audit log was cleared,"</b> naming SECLAB\Administrator.</div>
+          <div class="row"><span class="lbl why">Why</span>An attacker can erase the history but not the record of the erasing. Logs saved off the machine survive the clear.</div>
+          <div class="shots">
+            <figure><button class="shot" type="button"><img src="s7-commands.jpg" alt="wevtutil exporting the Security log then clearing it" loading="lazy"></button><figcaption>Export, then clear</figcaption></figure>
+            <figure><button class="shot" type="button"><img src="s7-1102.jpg" alt="Event 1102 the audit log was cleared by SECLAB\Administrator" loading="lazy"></button><figcaption>1102: the clear is logged</figcaption></figure>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ===================== HUNT ===================== -->
+  <section class="panel" id="hunt" aria-labelledby="h-hunt">
+    <div class="phead"><h2 id="h-hunt">Hunting like an analyst</h2><span class="tags">step 10</span></div>
+    <div class="tabs"><a href="#hunt">Custom view</a><a href="#h-script">Script</a><a href="#h-search">Searches</a></div>
+    <div class="pbody">
+<div class="ev-explain"><b>In plain English:</b> Instead of searching one record at a time, I made a saved view that shows every alert together, and a script that exports all of them into one spreadsheet. Then I ran two quick searches that pick the attacks out of thousands of normal events.</div>
+      <h3 class="sub">Custom view: Security Lab Alerts</h3>
+      <p>One Event Viewer view across the Security, Defender and PowerShell logs, filtered to
+        <code>4625, 4688, 4698, 4699, 4720, 4728, 4740, 1116, 1117, 5001, 5013, 4104, 1102</code>: 1,794 events, newest first.</p>
+
+      <h3 class="sub" id="h-script">security-hunt.ps1</h3>
+      <p><a href="security-hunt.ps1">security-hunt.ps1</a> asks Windows for only the matching events with
+        <code>-FilterHashtable</code> (much faster than reading whole logs) and writes one sorted timeline.</p>
+<pre class="code ps1"># security-hunt.ps1 - pull lab alert events from the last 2 days into one CSV
+$since = (Get-Date).AddDays(-2)
+$queries = @(
+  @{LogName='Security'; Id=4625,4688,4698,4699,1102},
+  @{LogName='Microsoft-Windows-Windows Defender/Operational'; Id=1116,1117,5001,5013},
+  @{LogName='Microsoft-Windows-PowerShell/Operational'; Id=4104}
+)
+$events = foreach ($q in $queries) {
+  $q.StartTime = $since
+  Get-WinEvent -FilterHashtable $q -ErrorAction SilentlyContinue
+}
+$events | Sort-Object TimeCreated |
+  Select-Object TimeCreated, LogName, Id, @{n='Summary';e={($_.Message -split "`r?`n")[0].Trim()}} |
+  Export-Csv C:\Users\Public\security-hunt.csv -NoTypeInformation
+"Exported $($events.Count) events to C:\Users\Public\security-hunt.csv"</pre>
+      <p>Result: <b>1,462 events</b>. Filtered to the attack IDs, the table lines up scenarios 3, 4 and 6 in order
+        and surfaced something I hadn't looked for: two 5013 "Tamper Protection <b>Reverted</b> a change" events when
+        Tamper Protection came back on. It doesn't only block changes, it undoes them.</p>
+      <div class="issue">
+        <p class="head">"...has been created.<br>"</p>
+        <p class="meta">First version of the CSV</p>
+        <div class="row"><span class="lbl">Symptom</span>Every Summary ended with a stray quote on its own line.</div>
+        <div class="row"><span class="lbl">Cause</span>Event messages end lines with CR+LF. Splitting on LF alone left a carriage return in each summary.</div>
+        <div class="row fix"><span class="lbl">Fix</span>Split on <code>`r?`n</code> and <code>.Trim()</code> the result. Every row is now one line.</div>
+      </div>
+
+      <h3 class="sub" id="h-search">Targeted searches</h3>
+<pre class="code ps1"># only PowerShell launched with an encoded command
+Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4688} |
+  Where-Object { $_.Message -match 'EncodedCommand' } | Select-Object TimeCreated -First 5
+
+# every scheduled task created, by name
+Get-WinEvent -FilterHashtable @{LogName='Security'; Id=4698} | ForEach-Object {
+  ([xml]$_.ToXml()).Event.EventData.Data | Where-Object Name -eq 'TaskName' | Select-Object -ExpandProperty '#text' }</pre>
+      <p>The first found exactly one hit, <b>7:19:47 PM</b>, scenario 5, out of more than 13,000 Security events. The
+        second listed <code>\Updater</code> among Windows' own <code>\Microsoft\Windows\GroupPolicy\{...}</code> tasks.
+        It stands out because it isn't in a Microsoft folder. Telling routine noise apart from the real thing is most of the job.</p>
+      <div class="shots">
+        <figure><button class="shot" type="button"><img src="h-custom-view.jpg" alt="Event Viewer custom view Security Lab Alerts with 1,794 events" loading="lazy"></button><figcaption>Security Lab Alerts: 1,794 events</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="h-hunt-table.jpg" alt="Exported 1462 events and a filtered table of 1116, 1117, 5001, 5013, 4698 and 4699 events in order" loading="lazy"></button><figcaption>The attack timeline</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="h-searches.jpg" alt="EncodedCommand search returning 7:19:47 PM and task name list including Updater" loading="lazy"></button><figcaption>Both searches hit</figcaption></figure>
+        <figure><button class="shot" type="button"><img src="h-csv.jpg" alt="security-hunt.csv in Notepad with one clean line per event" loading="lazy"></button><figcaption>Fixed CSV</figcaption></figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== TROUBLESHOOTING ===================== -->
+  <section class="panel" id="troubleshooting" aria-labelledby="h-ts">
+    <div class="phead"><h2 id="h-ts">Troubleshooting</h2><span class="tags">what broke and why</span></div>
+    <div class="tabs"><a href="#troubleshooting">Syslog</a></div>
+    <div class="pbody">
+<div class="ev-explain"><b>In plain English:</b> Problems I ran into while building the lab, what caused each one, and how I fixed it. Working through these is a big part of real IT work.</div>
+      <div class="issue">
+        <p class="head">no device with valid ISO found, please check your installation medium</p>
+        <p class="meta">Proxmox installer, first attempt</p>
+        <div class="row"><span class="lbl">Symptom</span>The installer booted from the ISO, then couldn't find the ISO to continue.</div>
+        <div class="row"><span class="lbl">Cause</span>On a Generation 2 Hyper-V VM the DVD drive sits on a Hyper-V SCSI controller the installer has no driver for.</div>
+        <div class="row fix"><span class="lbl">Fix</span>Rebuilt PVE as Generation 1, where the DVD is on a standard IDE controller.</div>
+        <div class="shots"><figure><button class="shot" type="button"><img src="b-gen2-error.jpg" alt="Proxmox installer error: no device with valid ISO found" loading="lazy"></button><figcaption>Gen 2 VM: ISO not found</figcaption></figure></div>
+      </div>
+      <div class="issue">
+        <p class="head">Starting the installer GUI... Installation aborted</p>
+        <p class="meta">Proxmox installer, second attempt</p>
+        <div class="row"><span class="lbl">Symptom</span>The graphical installer quit to a root shell.</div>
+        <div class="row"><span class="lbl">Cause</span>It can't drive Hyper-V's virtual display.</div>
+        <div class="row fix"><span class="lbl">Fix</span>Used the Terminal UI installer, which asks the same questions.</div>
+        <div class="shots"><figure><button class="shot" type="button"><img src="b-gui-abort.jpg" alt="Proxmox graphical installer aborting to a root shell" loading="lazy"></button><figcaption>Graphical installer aborted</figcaption></figure></div>
+      </div>
+      <div class="issue">
+        <p class="head">Windows only allows one NAT network</p>
+        <p class="meta">Planning the lab network</p>
+        <div class="row"><span class="lbl">Symptom</span>My plan created a second Windows NAT; <code>Get-NetNat</code> showed LabNAT already in use by Labs 1 to 3.</div>
+        <div class="row"><span class="lbl">Cause</span>Windows supports a single NAT network per host.</div>
+        <div class="row fix"><span class="lbl">Fix</span>PVE joined the existing LabSwitch at an unused address, and Proxmox handles NAT for its own private bridge. No change to the old labs.</div>
+      </div>
+      <div class="issue">
+        <p class="head">net0: e1000e,bridge=vmbr0</p>
+        <p class="meta">Create VM wizard for SEC-DC01</p>
+        <div class="row"><span class="lbl">Symptom</span>The confirm tab showed the NIC on vmbr0, which would have put the DC directly on LabSwitch with the old labs.</div>
+        <div class="row"><span class="lbl">Cause</span>The wizard defaults to the first bridge.</div>
+        <div class="row fix"><span class="lbl">Fix</span>Changed net0 to vmbr1 under Hardware before first boot, and checked the confirm tab every time after.</div>
+      </div>
+      <div class="issue">
+        <p class="head">&gt;&gt;Start PXE over IPv4.</p>
+        <p class="meta">First boot of SEC-DC01</p>
+        <div class="row"><span class="lbl">Symptom</span>The VM tried to boot from the network instead of the Windows ISO.</div>
+        <div class="row"><span class="lbl">Cause</span>UEFI Windows media waits only a few seconds for "Press any key to boot from CD."</div>
+        <div class="row fix"><span class="lbl">Fix</span>Opened the console before clicking Start Now, then tapped the spacebar until Setup appeared.</div>
+      </div>
+      <div class="issue">
+        <p class="head">ping 192.168.50.1: 100% packet loss</p>
+        <p class="meta">Proxmox network check</p>
+        <div class="row"><span class="lbl">Symptom</span>PVE couldn't ping JARVIS, but could ping the internet through it.</div>
+        <div class="row"><span class="lbl">Cause</span>Windows Defender Firewall on JARVIS drops inbound ICMP by default.</div>
+        <div class="row fix"><span class="lbl">Fix</span>None needed. A failed ping doesn't mean a host is down. Left JARVIS's firewall alone.</div>
+      </div>
+      <div class="issue">
+        <p class="head">auditpol: No Auditing</p>
+        <p class="meta">Security Logging GPO</p>
+        <div class="row"><span class="lbl">Cause</span>Audit Policy Configuration extension <code>{F3CCC681...}</code> not registered on the GPO.</div>
+        <div class="row fix"><span class="lbl">Fix</span>Re-registered by toggling a setting in the editor. Full walk-through in <a href="#l-fix">Logging</a>.</div>
+      </div>
+      <div class="issue">
+        <p class="head">Event Viewer cannot open the event log or custom view. Access is denied.</p>
+        <p class="meta">Scenario 5, reading the Security log as tstark</p>
+        <div class="row"><span class="lbl">Cause</span>Only administrators can read the Security log. If every user could, so could an attacker.</div>
+        <div class="row fix"><span class="lbl">Fix</span>Ran Event Viewer as administrator.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== LESSONS ===================== -->
+  <section class="panel" id="lessons" aria-labelledby="h-les">
+    <div class="phead"><h2 id="h-les">Lessons learned</h2></div>
+    <div class="tabs"><a href="#lessons">Notes</a></div>
+    <div class="pbody">
+<div class="ev-explain"><b>In plain English:</b> The most useful things I took away from this project.</div>
+      <ul>
+        <li><b>Know where the evidence lives.</b> Domain logon failures are on the DC, not the computer the user typed on.</li>
+        <li><b>Pairs of events tell the story.</b> 4688 plus 4104, 4720 plus 4728, 5013 next to 5001: one says something happened, the other says what.</li>
+        <li><b>Defaults aren't enough.</b> Process creation, command lines and script blocks are off until you turn them on.</li>
+        <li><b>Verify the setting, not just the policy.</b> <code>gpresult</code> said the GPO applied; <code>auditpol</code> showed it hadn't.</li>
+        <li><b>Protection has layers.</b> SmartScreen, real-time scanning and Tamper Protection each stopped something the others didn't.</li>
+        <li><b>Save evidence first.</b> Exporting the log before clearing it kept every event from the lab.</li>
+        <li><b>Snapshots make it safe to break things.</b> Every risky step had a restore point.</li>
+      </ul>
+      <h3 class="sub">Next</h3>
+      <p>Forward SEC-WIN11's events to the DC with Windows Event Forwarding, add Sysmon for richer process data, and send
+        logs to Microsoft Sentinel in Azure to build alert rules on the event IDs above. I'm also studying for CompTIA Security+.</p>
+    </div>
+  </section>
+
+  <!-- ===================== LABS ===================== -->
+  <section class="panel" id="labs" aria-labelledby="h-labs">
+    <div class="phead"><h2 id="h-labs">Home lab series</h2></div>
+    <div class="tabs"><a href="#labs">Pools</a></div>
+    <div class="pbody">
+<div class="ev-explain"><b>In plain English:</b> How this project connects to my other projects.</div>
+      <div class="tbl"><table>
+        <thead><tr><th>#</th><th>Lab</th><th>Status</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td><a href="https://emilagui01.github.io/ad-homelab/">Windows Server 2022 Active Directory</a></td><td class="ok">Complete</td><td>Domain, DNS, DHCP, Group Policy, account tickets</td></tr>
+          <tr><td>2</td><td><a href="https://emilagui01.github.io/helpdesk-lab/">Help Desk Ticketing System</a></td><td class="ok">Complete</td><td>osTicket on Ubuntu, connected to AD</td></tr>
+          <tr><td>3</td><td><a href="https://emilagui01.github.io/powershell-automation-lab/">PowerShell Automation</a></td><td class="ok">Complete</td><td>Account lifecycle scripts run from tickets</td></tr>
+          <tr><td>4</td><td>Security Monitoring</td><td class="ok">Complete</td><td>This page</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <footer>
+    Emil Aguirre Herrera &middot;
+    <a href="https://emilagui01.github.io/#labs">All labs</a>
+    <a href="https://github.com/emilagui01/security-monitoring-lab">Repository</a>
+    <a href="https://www.linkedin.com/in/emilagui01">LinkedIn</a>
+  </footer>
+  </main>
+</div>
+
+<!-- Lightbox: screenshots open here, never in a new page -->
+<div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Screenshot viewer" hidden>
+  <div class="lb-bar"><span class="lb-title" id="lbTitle"></span><span class="lb-count" id="lbCount"></span><button class="lb-x" id="lbClose" type="button">Close &times;</button></div>
+  <div class="lb-stage" id="lbStage">
+    <button class="lb-nav lb-prev" id="lbPrev" type="button" aria-label="Previous screenshot">&lsaquo;</button>
+    <img id="lbImg" alt="">
+    <button class="lb-nav lb-next" id="lbNext" type="button" aria-label="Next screenshot">&rsaquo;</button>
+  </div>
+  <div class="lb-cap" id="lbCap"></div>
+</div>
+
+<script>
+(function () {
+  // ---------- light syntax colouring ----------
+  function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  function color(src, isConf) {
+    return src.split("\n").map(function (line) {
+      var hash = -1, inS = false;
+      for (var i = 0; i < line.length; i++) {
+        var ch = line[i];
+        if (ch === "'" || ch === '"') inS = !inS;
+        if (ch === "#" && !inS && (i === 0 || /\s/.test(line[i - 1]))) { hash = i; break; }
+      }
+      var code = hash >= 0 ? line.slice(0, hash) : line, cmt = hash >= 0 ? line.slice(hash) : "";
+      var out = esc(code);
+      if (isConf) {
+        out = out.replace(/^(\s*)(auto|iface|address|bridge-\w+|post-up|post-down)\b/, '$1<span class="k">$2</span>');
+      } else {
+        out = out.replace(/('[^']*'|"[^"]*")/g, '<span class="s">$1</span>')
+                 .replace(/(\$[A-Za-z_][\w:]*)/g, '<span class="v">$1</span>')
+                 .replace(/\b([A-Z][a-z]+-[A-Z][A-Za-z]+)\b/g, '<span class="k">$1</span>')
+                 .replace(/(\s)(-[A-Za-z][A-Za-z]+)/g, '$1<span class="p">$2</span>');
+      }
+      return out + (cmt ? '<span class="c">' + esc(cmt) + '</span>' : "");
+    }).join("\n");
+  }
+  document.querySelectorAll("pre.code").forEach(function (pre) {
+    pre.innerHTML = color(pre.textContent, pre.classList.contains("conf"));
+  });
+
+  // ---------- placeholder for screenshots not uploaded yet ----------
+  var placeholder = "data:image/svg+xml;utf8," + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200"><rect width="320" height="200" fill="#111"/>' +
+    '<text x="160" y="94" fill="#a8a8a8" font-family="monospace" font-size="13" text-anchor="middle">Screenshot coming soon</text>' +
+    '<text x="160" y="116" fill="#e57000" font-family="monospace" font-size="11" text-anchor="middle">TASK ERROR: file not found</text></svg>');
+  document.querySelectorAll(".shot img").forEach(function (img) {
+    img.addEventListener("error", function () { img.src = placeholder; img.classList.add("missing"); }, { once: true });
+  });
+
+  // ---------- lightbox ----------
+  var shots = Array.prototype.slice.call(document.querySelectorAll(".shot"));
+  var lb = document.getElementById("lb"), lbImg = document.getElementById("lbImg"),
+      lbCap = document.getElementById("lbCap"), lbTitle = document.getElementById("lbTitle"),
+      lbCount = document.getElementById("lbCount"), idx = 0, opener = null;
+  function show(i) {
+    idx = (i + shots.length) % shots.length;
+    var img = shots[idx].querySelector("img"), fig = shots[idx].closest("figure");
+    var cap = fig.querySelector("figcaption"), panel = shots[idx].closest(".incident, .panel");
+    var title = panel ? (panel.querySelector(".ihead h3, .phead h2") || {}).textContent : "";
+    lbImg.src = img.classList.contains("missing") ? placeholder : img.getAttribute("src");
+    lbImg.alt = img.alt;
+    lbCap.textContent = (cap ? cap.textContent + ". " : "") + img.alt;
+    lbTitle.textContent = title || "Screenshot";
+    lbCount.textContent = (idx + 1) + " / " + shots.length;
+  }
+  function open(i) {
+    opener = shots[i]; show(i);
+    lb.hidden = false; lb.classList.add("open"); document.body.classList.add("lb-lock");
+    document.getElementById("lbClose").focus();
+  }
+  function close() {
+    lb.classList.remove("open"); lb.hidden = true; document.body.classList.remove("lb-lock");
+    if (opener) opener.focus();
+  }
+  shots.forEach(function (b, i) { b.addEventListener("click", function () { open(i); }); });
+  document.getElementById("lbClose").addEventListener("click", close);
+  document.getElementById("lbPrev").addEventListener("click", function (e) { e.stopPropagation(); show(idx - 1); });
+  document.getElementById("lbNext").addEventListener("click", function (e) { e.stopPropagation(); show(idx + 1); });
+  document.getElementById("lbStage").addEventListener("click", function (e) { if (e.target === this) close(); });
+  document.addEventListener("keydown", function (e) {
+    if (!lb.classList.contains("open")) return;
+    if (e.key === "Escape") close();
+    else if (e.key === "ArrowLeft") show(idx - 1);
+    else if (e.key === "ArrowRight") show(idx + 1);
+  });
+  var tx = null;
+  lb.addEventListener("touchstart", function (e) { tx = e.touches[0].clientX; }, { passive: true });
+  lb.addEventListener("touchend", function (e) {
+    if (tx === null) return; var dx = e.changedTouches[0].clientX - tx; tx = null;
+    if (Math.abs(dx) > 50) show(idx + (dx < 0 ? 1 : -1));
+  });
+
+  // ---------- highlight the current section in the resource tree ----------
+  var links = Array.prototype.slice.call(document.querySelectorAll(".tree li a"));
+  var secs = ["summary","network","build","logging","tasks","incidents","hunt","troubleshooting","lessons","labs"]
+    .map(function (id) { return document.getElementById(id); });
+  function mark() {
+    var cur = secs[0];
+    secs.forEach(function (s) { if (s.getBoundingClientRect().top < 160) cur = s; });
+    links.forEach(function (a) { a.classList.toggle("on", a.getAttribute("href") === "#" + cur.id && !a.querySelector(".vm, .node, .dc")); });
+  }
+  window.addEventListener("scroll", mark, { passive: true }); mark();
+})();
+</script>
+<script>
+  (function () {
+    document.getElementById('viewToggle').addEventListener('click', function () {
+      var easy = document.body.classList.toggle('easy');
+      try { localStorage.setItem('portfolio-view', easy ? 'easy' : 'tech'); } catch (e) {}
+    });
+  })();
+</script>
+</body>
+</html>
